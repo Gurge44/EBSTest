@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Reflection;
+using ColossalFramework;
 using HarmonyLib;
 using JetBrains.Annotations;
 
@@ -38,13 +39,37 @@ namespace ExpressBusServices.Patches.Common
         [UsedImplicitly]
         public static bool ExtraSkippingLogic(VehicleAI __instance, ushort vehicleID, ref Vehicle vehicleData)
         {
-            if (!(__instance is BusAI || __instance is TrolleybusAI || __instance is TramAI))
+            if (!(__instance is BusAI busAI/* || __instance is TrolleybusAI || __instance is TramAI*/)) // for now only buses to test
             {
                 // not bus or trolleybus; no
                 // note: we are also applying the logic to trams as streetcars
                 return true;
             }
-            if (ExtraSkippingIsDisallowed(__instance, vehicleID, ref vehicleData, out var currentStop))
+            
+            Patch_VehicleAI_SimulationStep.StopPositions[vehicleData.m_targetBuilding].Position = vehicleData.m_targetPos3;
+
+            Patch_VehicleAI_SimulationStep.PreparedSkip preparedSkip = Patch_VehicleAI_SimulationStep.PreparedSkips[vehicleID];
+
+            if (preparedSkip.Path != 0)
+            {
+                vehicleData.m_targetBuilding = preparedSkip.FollowingStop;
+                BusStopSkippingLookupTable.Notify_BusShouldSkipLoading(vehicleID);
+                var unloadParams = new object[] { vehicleID, vehicleData, preparedSkip.SkippedStop, preparedSkip.FollowingStop };
+                if (vehicleData.m_path != 0U) Singleton<PathManager>.instance.ReleasePath(vehicleData.m_path);
+                vehicleData.m_path = preparedSkip.Path;
+                vehicleData.m_pathPositionIndex = 0;
+                vehicleData.m_lastPathOffset = 0;
+                vehicleData.m_targetPos3.w = 0f;
+                AccessTools.Method(typeof(BusAI), "UnloadPassengers").Invoke(busAI, unloadParams);
+                AccessTools.Method(typeof(BusAI), "LoadPassengers").Invoke(busAI, unloadParams);
+                Patch_VehicleAI_SimulationStep.PreparedSkips[vehicleID] = default;
+                Patch_VehicleAI_SimulationStep.CheckSkip(__instance, vehicleID, ref vehicleData);
+                return false;
+            }
+            
+            return true;
+
+            /*if (ExtraSkippingIsDisallowed(__instance, vehicleID, ref vehicleData, out var currentStop))
             {
                 // actually, cannot do extra skip, so we allow the original method to execute.
                 return true;
@@ -110,10 +135,10 @@ namespace ExpressBusServices.Patches.Common
                 vehicleData.m_flags &= ~Vehicle.Flags.WaitingPath;
                 vehicleData.Info.m_vehicleAI.SetTransportLine(vehicleID, ref vehicleData, 0);
             }
-            return false;
+            return false;*/
         }
 
-        private static bool ExtraSkippingIsDisallowed(VehicleAI __instance, ushort vehicleID, ref Vehicle vehicleData, out ushort currentApproachingStop)
+        public static bool ExtraSkippingIsDisallowed(VehicleAI __instance, ushort vehicleID, ref Vehicle vehicleData, out ushort currentApproachingStop)
         {
             // note: we extract this to be its own method to narrow down the place that triggers the strange NullRefEx bug
 
