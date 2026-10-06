@@ -1,5 +1,4 @@
-﻿using System;
-using System.Reflection;
+﻿using System.Reflection;
 using ColossalFramework;
 using HarmonyLib;
 using JetBrains.Annotations;
@@ -45,8 +44,6 @@ namespace ExpressBusServices.Patches.Common
                 // note: we are also applying the logic to trams as streetcars
                 return true;
             }
-            
-            Patch_VehicleAI_SimulationStep.StopPositions[vehicleData.m_targetBuilding].Position = vehicleData.m_targetPos3;
 
             Patch_VehicleAI_SimulationStep.PreparedSkip preparedSkip = Patch_VehicleAI_SimulationStep.PreparedSkips[vehicleID];
 
@@ -57,9 +54,7 @@ namespace ExpressBusServices.Patches.Common
                 var unloadParams = new object[] { vehicleID, vehicleData, preparedSkip.SkippedStop, preparedSkip.FollowingStop };
                 if (vehicleData.m_path != 0U) Singleton<PathManager>.instance.ReleasePath(vehicleData.m_path);
                 vehicleData.m_path = preparedSkip.Path;
-                vehicleData.m_pathPositionIndex = 0;
-                vehicleData.m_lastPathOffset = 0;
-                vehicleData.m_targetPos3.w = 0f;
+                vehicleData.m_flags |= Vehicle.Flags.WaitingPath;
                 AccessTools.Method(typeof(BusAI), "UnloadPassengers").Invoke(busAI, unloadParams);
                 AccessTools.Method(typeof(BusAI), "LoadPassengers").Invoke(busAI, unloadParams);
                 Patch_VehicleAI_SimulationStep.PreparedSkips[vehicleID] = default;
