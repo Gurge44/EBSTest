@@ -38,7 +38,7 @@ namespace ExpressBusServices.Patches.Common
         [UsedImplicitly]
         public static bool ExtraSkippingLogic(VehicleAI __instance, ushort vehicleID, ref Vehicle vehicleData)
         {
-            if (!(__instance is BusAI busAI/* || __instance is TrolleybusAI || __instance is TramAI*/)) // for now only buses to test
+            if (!(__instance is BusAI /*|| __instance is TrolleybusAI */|| __instance is TramAI))
             {
                 // not bus or trolleybus; no
                 // note: we are also applying the logic to trams as streetcars
@@ -55,8 +55,8 @@ namespace ExpressBusServices.Patches.Common
                 if (vehicleData.m_path != 0U) Singleton<PathManager>.instance.ReleasePath(vehicleData.m_path);
                 vehicleData.m_path = preparedSkip.Path;
                 vehicleData.m_flags |= Vehicle.Flags.WaitingPath;
-                AccessTools.Method(typeof(BusAI), "UnloadPassengers").Invoke(busAI, unloadParams);
-                AccessTools.Method(typeof(BusAI), "LoadPassengers").Invoke(busAI, unloadParams);
+                AccessTools.Method(__instance.GetType(), "UnloadPassengers").Invoke(__instance, unloadParams);
+                AccessTools.Method(__instance.GetType(), "LoadPassengers").Invoke(__instance, unloadParams);
                 Patch_VehicleAI_SimulationStep.PreparedSkips[vehicleID] = default;
                 Patch_VehicleAI_SimulationStep.CheckSkip(__instance, vehicleID, ref vehicleData);
                 return false;

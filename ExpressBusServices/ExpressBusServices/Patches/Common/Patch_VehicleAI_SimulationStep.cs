@@ -55,7 +55,7 @@ namespace ExpressBusServices.Patches.Common
             if (Patch_PublicTransportExtraSkip.ExtraSkippingIsDisallowed(__instance, vehicleID, ref vehicleData, out ushort currentApproachingStop))
                 return;
 
-            if (!(__instance is BusAI busAI) || vehicleData.m_targetBuilding == 0 || vehicleData.m_path == 0) return;
+            if (!(__instance is BusAI || (__instance is TramAI && __instance.m_info.m_vehicleType == VehicleInfo.VehicleType.Tram)) || vehicleData.m_targetBuilding == 0 || vehicleData.m_path == 0) return;
 
             if (!Singleton<PathManager>.instance.m_pathUnits.m_buffer[(int)vehicleData.m_path].GetLastPosition(out PathUnit.Position startPos)) return;
 
@@ -63,18 +63,16 @@ namespace ExpressBusServices.Patches.Common
             if (nextStop == 0) return;
             Vector3 endPos = Singleton<NetManager>.instance.m_nodes.m_buffer[nextStop].m_position;
 
-            if (PreparePath(busAI, startPos, endPos, true, false, out uint path))
-            {
+            if (__instance is BusAI busAI ? PreparePathBus(busAI, startPos, endPos, true, false, out uint path) : PreparePathTram((TramAI)__instance, startPos, endPos, true, out path))
                 PreparedSkips[vehicleID] = new PreparedSkip
                 {
                     SkippedStop = currentApproachingStop,
                     FollowingStop = nextStop,
                     Path = path
                 };
-            }
         }
 
-        public static bool PreparePath(
+        private static bool PreparePathBus(
             BusAI __instance,
             PathUnit.Position startPos,
             Vector3 endPos,
@@ -89,6 +87,26 @@ namespace ExpressBusServices.Patches.Common
                 if (!endBothWays || distanceSqrA2 < 10.0)
                     pathPosB2 = new PathUnit.Position();
                 if (Singleton<PathManager>.instance.CreatePath(out path, ref Singleton<SimulationManager>.instance.m_randomizer, Singleton<SimulationManager>.instance.m_currentBuildIndex, startPos, new PathUnit.Position(), pathPosA2, pathPosB2, new PathUnit.Position(), NetInfo.LaneType.Vehicle | NetInfo.LaneType.TransportVehicle, info.m_vehicleType, info.vehicleCategory, 20000f, false, false, false, false, false, false, false))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool PreparePathTram(
+            TramAI __instance,
+            PathUnit.Position startPos,
+            Vector3 endPos,
+            bool endBothWays,
+            out uint path)
+        {
+            path = 0;
+            VehicleInfo info = __instance.m_info;
+            if (PathManager.FindPathPosition(endPos, ItemClass.Service.Road, NetInfo.LaneType.Vehicle, info.m_vehicleType, info.vehicleCategory, false, false, 32f, false, false, out PathUnit.Position pathPosA2, out PathUnit.Position pathPosB2, out float distanceSqrA2, out float distanceSqrB2))
+            {
+                if (!endBothWays || distanceSqrB2 > distanceSqrA2 * 1.2000000476837158)
+                    pathPosB2 = new PathUnit.Position();
+                if (Singleton<PathManager>.instance.CreatePath(out path, ref Singleton<SimulationManager>.instance.m_randomizer, Singleton<SimulationManager>.instance.m_currentBuildIndex, startPos, new PathUnit.Position(), pathPosA2, pathPosB2, NetInfo.LaneType.Vehicle, info.m_vehicleType, info.vehicleCategory, 20000f, false, false, true, false))
                     return true;
             }
 
