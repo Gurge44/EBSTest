@@ -55,7 +55,7 @@ namespace ExpressBusServices.Patches.Common
             if (Patch_PublicTransportExtraSkip.ExtraSkippingIsDisallowed(__instance, vehicleID, ref vehicleData, out ushort currentApproachingStop))
                 return;
 
-            if (!(__instance is BusAI || (__instance is TramAI && __instance.m_info.m_vehicleType == VehicleInfo.VehicleType.Tram)) || vehicleData.m_targetBuilding == 0 || vehicleData.m_path == 0) return;
+            if (!(__instance is BusAI || __instance is TramAI) || vehicleData.m_targetBuilding == 0 || vehicleData.m_path == 0) return;
 
             if (!Singleton<PathManager>.instance.m_pathUnits.m_buffer[(int)vehicleData.m_path].GetLastPosition(out PathUnit.Position startPos)) return;
 
