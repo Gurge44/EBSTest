@@ -139,7 +139,7 @@ namespace ExpressBusServices.Patches.Common
 
             currentApproachingStop = 0;
             // per-vehicle detection; we have buses and trams
-            if (__instance is BusAI || __instance is TrolleybusAI)
+            /*if (__instance is BusAI || __instance is TrolleybusAI)
             {
                 if ((int)EBSModConfig.CurrentExpressBusMode < (int)EBSModConfig.ExpressMode.AGGRESSIVE)
                 {
@@ -162,7 +162,7 @@ namespace ExpressBusServices.Patches.Common
                 // this can happen when e.g. the depot is forced to deactivate and the vehicles are therefore forced to return to base
                 // in this case, don't do it
                 return true;
-            }
+            }*/
 
             if (!DepartureChecker.CanSkipNextStop(vehicleID, ref vehicleData))
             {

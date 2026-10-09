@@ -33,9 +33,9 @@ namespace ExpressBusServices.Patches.Common
 
         [HarmonyPrefix]
         [UsedImplicitly]
-        public static void PreSimulationStep(ushort vehicleID, ref Vehicle vehicleData)
+        public static void PreSimulationStep(VehicleAI __instance, ushort vehicleID, ref Vehicle vehicleData)
         {
-            if (vehicleData.m_transportLine != 0 && vehicleData.m_path == 0 && (vehicleData.m_flags & Vehicle.Flags.WaitingPath) != 0)
+            if (vehicleData.m_transportLine != 0 && vehicleData.m_path == 0 && (__instance is BusAI || __instance is TramAI) && (vehicleData.m_flags & Vehicle.Flags.WaitingPath) != 0)
             {
                 vehicleData.m_flags &= ~Vehicle.Flags.WaitingPath;
                 vehicleData.Info.m_vehicleAI.SetTransportLine(vehicleID, ref vehicleData, 0);
@@ -46,8 +46,21 @@ namespace ExpressBusServices.Patches.Common
         [UsedImplicitly]
         public static void PostSimulationStep(VehicleAI __instance, ushort vehicleID, ref Vehicle vehicleData)
         {
-            if (vehicleData.m_transportLine != 0 && (vehicleData.m_flags & Vehicle.Flags.Leaving) != 0 && PreparedSkips[vehicleID].Path == 0)
-                CheckSkip(__instance, vehicleID, ref vehicleData);
+            if (vehicleData.m_transportLine == 0 || (!(__instance is BusAI) && !(__instance is TramAI)) || vehicleData.m_targetBuilding == 0 || vehicleData.m_path == 0 || (vehicleData.m_flags & (Vehicle.Flags.Arriving | Vehicle.Flags.Stopped)) != 0)
+                return;
+            
+            ref PreparedSkip preparedSkip = ref PreparedSkips[vehicleID];
+                
+            if (preparedSkip.Path != 0) return; // already has a prepared path to skip the next stop
+
+            if (preparedSkip.RetryIn > 0) // checking in every simulation step is a waste of performance
+            {
+                preparedSkip.RetryIn--;
+                return;
+            }
+
+            preparedSkip.RetryIn = 180; // every 3 seconds
+            CheckSkip(__instance, vehicleID, ref vehicleData);
         }
 
         public static void CheckSkip(VehicleAI __instance, ushort vehicleID, ref Vehicle vehicleData)
@@ -55,9 +68,8 @@ namespace ExpressBusServices.Patches.Common
             if (Patch_PublicTransportExtraSkip.ExtraSkippingIsDisallowed(__instance, vehicleID, ref vehicleData, out ushort currentApproachingStop))
                 return;
 
-            if (!(__instance is BusAI || __instance is TramAI) || vehicleData.m_targetBuilding == 0 || vehicleData.m_path == 0) return;
-
-            if (!Singleton<PathManager>.instance.m_pathUnits.m_buffer[(int)vehicleData.m_path].GetLastPosition(out PathUnit.Position startPos)) return;
+            if (!Singleton<PathManager>.instance.m_pathUnits.m_buffer[(int)vehicleData.m_path].GetLastPosition(out PathUnit.Position startPos))
+                return;
 
             ushort nextStop = TransportLine.GetNextStop(currentApproachingStop);
             if (nextStop == 0) return;
@@ -68,7 +80,8 @@ namespace ExpressBusServices.Patches.Common
                 {
                     SkippedStop = currentApproachingStop,
                     FollowingStop = nextStop,
-                    Path = path
+                    Path = path,
+                    RetryIn = 0
                 };
         }
 
@@ -118,6 +131,7 @@ namespace ExpressBusServices.Patches.Common
             public ushort SkippedStop;
             public ushort FollowingStop;
             public uint Path;
+            public int RetryIn;
         }
     }
 }
