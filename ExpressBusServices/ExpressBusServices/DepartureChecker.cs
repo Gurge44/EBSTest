@@ -115,7 +115,7 @@ namespace ExpressBusServices
 
             // have data; check for pax delta
             int waitTime = 12;
-            bool vehicleIsMinibus = vehicleData.m_leadingVehicle == 0 && vehicleData.m_trailingVehicle == 0 && VehicleUtil.GetMaxCarryingCapacityOfTrain(vehicleID, ref vehicleData) <= 20;
+            /*bool vehicleIsMinibus = vehicleData.m_leadingVehicle == 0 && vehicleData.m_trailingVehicle == 0 && VehicleUtil.GetMaxCarryingCapacityOfTrain(vehicleID, ref vehicleData) <= 20;
             if (EBSModConfig.CanUseMinibusMode && vehicleIsMinibus)
             {
                 // minibus mode: allow faster departure if pax delta is small
@@ -124,7 +124,7 @@ namespace ExpressBusServices
                 {
                     waitTime = 4;
                 }
-            }
+            }*/
 
             // class-specific checking
             if (VehicleIsTram(vehicleData))
@@ -167,7 +167,21 @@ namespace ExpressBusServices
                 return DepartureIntention.Go;
             }
             // has pax delta; wait fully!
+            
+            // actually, I'll make the waiting time depend on the actual passenger exchange (replaces minibus mode as well)
+            vehicleData.Info.m_vehicleAI.GetBufferStatus(vehicleID, ref vehicleData, out _, out _, out int capacity);
+            waitTime = 4 + VehiclePaxDeltaInfo.GetSafely(vehicleID).PaxDeltaCount / GetNumberOfDoorsFromCapacity(capacity);
+            
             return vehicleData.m_waitCounter >= waitTime ? DepartureIntention.Go : DepartureIntention.Hold;
+        }
+
+        // completely an assumption, VehicleInfo.m_doors.Length might not be accurate
+        public static int GetNumberOfDoorsFromCapacity(int capacity)
+        {
+            if (capacity <= 50) return 1;
+            if (capacity <= 85) return 2;
+            if (capacity <= 120) return 3;
+            return 4;
         }
 
         /// <summary>
