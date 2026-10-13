@@ -1,5 +1,6 @@
 ﻿using System.Reflection;
 using ColossalFramework;
+using ExpressBusServices.DataTypes;
 using HarmonyLib;
 using JetBrains.Annotations;
 
@@ -171,16 +172,54 @@ namespace ExpressBusServices.Patches.Common
             }
 
             TransportLineUtil.CountPassengersWaiting(currentApproachingStop, out int residents, out int tourists);
-            var unloadPredict = TransportLineUtil.GetQuantityPassengerUnloadOnNextStop(vehicleID, ref vehicleData, out bool full, out bool empty);
-            if (unloadPredict > 0 || (!full && (residents + tourists) > 0))
+            var unloadPredict = TransportLineUtil.GetQuantityPassengerUnloadOnNextStop(vehicleID, ref vehicleData, out bool full, out _);
+            if (unloadPredict <= 0 && (full || (residents + tourists) <= 0))
             {
-                // have someone dropping off OR have boardable passengers
-                // dont do it
-                return true;
+                // nobody wants to board or alight, can skip next stop
+                return false;
             }
 
-            // none of the checks disallowed it
-            return false;
+            // have someone dropping off OR have boardable passengers
+
+            if (unloadPredict > 0) return true; // if someone wants to alight, the last check is irrelevant
+            if (__instance is TramAI) return true; // trams cannot pass each other, irrelevant
+            
+            // nobody wants to alight, but some want to board
+            // check if there's a vehicle on this line in front of this one going to the same stop with enough space to fit all waiting passengers at the next stop
+
+            TransportLineVehicleProgress lineProgress = VehicleLineProgress.GetTransportLineVehicleProgress(vehicleData.m_transportLine);
+            
+            if (lineProgress.VehiclesCount < 2) return true; // this is the only vehicle on this line, irrelevant
+            
+            VehicleLineProgress? selfProgress = lineProgress.GetProgressOf(vehicleID);
+            if (!selfProgress.HasValue) return true; // no data?
+            
+            VehicleLineProgress? frontVehicleProgress = lineProgress.GetProgressOfFrontOf(vehicleID);
+            if (!frontVehicleProgress.HasValue) return true; // no data?
+            
+            if (frontVehicleProgress.Value.PercentProgress < selfProgress.Value.PercentProgress) // not ahead of current vehicle, try back one
+            {
+                frontVehicleProgress = lineProgress.GetProgressOfBackOf(vehicleID);
+                if (!frontVehicleProgress.HasValue) return true; // no data?
+                if (frontVehicleProgress.Value.PercentProgress < selfProgress.Value.PercentProgress) return true; // also not ahead, exit
+            }
+            
+            ushort aheadVehicleID = frontVehicleProgress.Value.VehicleID;
+            if (aheadVehicleID == 0) return true; // invalid vehicle
+            Vehicle aheadVehicle = Singleton<VehicleManager>.instance.m_vehicles.m_buffer[aheadVehicleID];
+            
+            // check if this vehicle is also approaching the same stop
+            if (aheadVehicle.m_transportLine == 0 || aheadVehicle.m_path == 0 || aheadVehicle.m_targetBuilding != currentApproachingStop) return true;
+            
+            if (Patch_VehicleAI_SimulationStep.PreparedSkips[aheadVehicleID].Path != 0) return true; // this vehicle is skipping the next stop, so the current one needs to pick up the waiting passengers
+            
+            // get the current load of this vehicle and how many people will get off of it at the next stop
+            aheadVehicle.Info.m_vehicleAI.GetBufferStatus(aheadVehicleID, ref aheadVehicle, out _, out int passengers, out int capacity);
+            unloadPredict = TransportLineUtil.GetQuantityPassengerUnloadOnNextStop(aheadVehicleID, ref aheadVehicle, out _, out _);
+
+            // if all waiting passengers will be able to board the vehicle ahead, the current one can prepare to skip the stop
+            // otherwise (e.g. not enough capacity), must do a full stop
+            return passengers - unloadPredict + residents + tourists > capacity;
         }
     }
 }

@@ -61,7 +61,7 @@ namespace ExpressBusServices.Patches.Common
 
             // the game does 64 simulation steps per second
             // vehicles are updated every 16th simulation frame, so 4 updates per second
-            preparedSkip.RetryIn = 8; // check every 2 seconds
+            preparedSkip.RetryIn = 12; // check every 3 seconds
             CheckSkip(__instance, vehicleID, ref vehicleData);
         }
 
