@@ -31,7 +31,7 @@ namespace ExpressBusServices.Patches.Common
             return !ModDetector.TransportLinesManagerIsLoaded();
         }
 
-        [HarmonyPrefix]
+        /*[HarmonyPrefix]
         [UsedImplicitly]
         public static void PreSimulationStep(VehicleAI __instance, ushort vehicleID, ref Vehicle vehicleData)
         {
@@ -40,7 +40,7 @@ namespace ExpressBusServices.Patches.Common
                 vehicleData.m_flags &= ~Vehicle.Flags.WaitingPath;
                 vehicleData.Info.m_vehicleAI.SetTransportLine(vehicleID, ref vehicleData, 0);
             }
-        }
+        }*/
 
         [HarmonyPostfix]
         [UsedImplicitly]
@@ -53,15 +53,24 @@ namespace ExpressBusServices.Patches.Common
                 
             if (preparedSkip.Path != 0) return; // already has a prepared path to skip the next stop
 
-            if (preparedSkip.RetryIn > 0) // checking in every simulation step is a waste of performance
+            if (__instance is BusAI)
             {
-                preparedSkip.RetryIn--;
-                return;
-            }
+                if (preparedSkip.RetryIn > 0) // checking in every simulation step is a waste of performance
+                {
+                    preparedSkip.RetryIn--;
+                    return;
+                }
 
-            // the game does 64 simulation steps per second
-            // vehicles are updated every 16th simulation frame, so 4 updates per second
-            preparedSkip.RetryIn = 12; // check every 3 seconds
+                // the game does 64 simulation steps per second
+                // vehicles are updated every 16th simulation frame, so 4 updates per second
+                preparedSkip.RetryIn = 12; // check every 3 seconds
+            }
+            else // tram
+            {
+                if ((vehicleData.m_flags & Vehicle.Flags.Leaving) == 0)
+                    return; // only check for skip when leaving a stop to prevent self-folding due to an unfinished path
+            }
+            
             CheckSkip(__instance, vehicleID, ref vehicleData);
         }
 
