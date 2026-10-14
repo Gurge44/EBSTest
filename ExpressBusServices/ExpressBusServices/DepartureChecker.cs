@@ -33,7 +33,7 @@ namespace ExpressBusServices
 
         // if true, then this mod will instruct buses to skip the stop
         // this looks very similar to the above, except that the numbers are adjusted for correctness.
-        public static bool CanSkipNextStop(ushort vehicleID, ref Vehicle vehicleData)
+        public static bool CanSkipNextStop(ref Vehicle vehicleData)
         {
             if (BusIsIntercityBus(vehicleData))
             {

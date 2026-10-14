@@ -46,7 +46,7 @@ namespace ExpressBusServices.Patches.Common
         [UsedImplicitly]
         public static void PostSimulationStep(VehicleAI __instance, ushort vehicleID, ref Vehicle vehicleData)
         {
-            if (vehicleData.m_transportLine == 0 || (!(__instance is BusAI) && !(__instance is TramAI)) || vehicleData.m_targetBuilding == 0 || vehicleData.m_path == 0 || (vehicleData.m_flags & (Vehicle.Flags.Arriving | Vehicle.Flags.Stopped)) != 0)
+            if (vehicleData.m_transportLine == 0 || (!(__instance is BusAI) && !(__instance is TramAI)) || vehicleData.m_targetBuilding == 0 || vehicleData.m_path == 0 || (vehicleData.m_flags & Vehicle.Flags.Stopped) != 0)
                 return;
             
             ref PreparedSkip preparedSkip = ref PreparedSkips[vehicleID];
@@ -55,6 +55,23 @@ namespace ExpressBusServices.Patches.Common
 
             if (__instance is BusAI)
             {
+                if ((vehicleData.m_flags & Vehicle.Flags.Arriving) != 0)
+                {
+                    if (vehicleData.GetLastFrameVelocity() == Vector3.zero) // full stop
+                    {
+                        if (!DepartureChecker.CanSkipNextStop(ref vehicleData)) // this just checks if the vehicle is approaching an end-of-line stop (terminus)
+                        {
+                            // is arriving at terminus - don't do this because unbunching makes this look weird
+                            return;
+                        }
+                        
+                        // already at the stop segment but stuck behind another vehicle. IRL the driver simply opens the doors where it is and calls it a day.
+                        __instance.ArriveAtDestination(vehicleID, ref vehicleData);
+                    }
+
+                    return;
+                }
+                
                 if (preparedSkip.RetryIn > 0) // checking in every simulation step is a waste of performance
                 {
                     preparedSkip.RetryIn--;

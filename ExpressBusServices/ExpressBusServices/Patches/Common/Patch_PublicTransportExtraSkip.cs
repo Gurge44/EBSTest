@@ -165,7 +165,7 @@ namespace ExpressBusServices.Patches.Common
                 return true;
             }*/
 
-            if (!DepartureChecker.CanSkipNextStop(vehicleID, ref vehicleData))
+            if (!DepartureChecker.CanSkipNextStop(ref vehicleData))
             {
                 // is arriving at terminus; dont do this!
                 return true;
