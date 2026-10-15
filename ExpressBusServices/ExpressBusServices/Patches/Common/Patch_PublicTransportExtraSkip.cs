@@ -50,6 +50,21 @@ namespace ExpressBusServices.Patches.Common
 
             if (preparedSkip.Path != 0)
             {
+                if (!preparedSkip.SkipDecisionIsFinal) // if not passing the vehicle ahead
+                {
+                    TransportLineUtil.CountPassengersWaiting(vehicleData.m_targetBuilding, out int residents, out int tourists);
+                    __instance.GetBufferStatus(vehicleID, ref vehicleData, out _, out int passengers, out int capacity);
+                    
+                    if (residents + tourists > 0 && passengers < capacity)
+                    {
+                        // there was a skip path prepared, but since then, people arrived at the stop,
+                        // and the vehicle is not full, so stop normally and pick them up
+                        Singleton<PathManager>.instance.ReleasePath(preparedSkip.Path);
+                        Patch_VehicleAI_SimulationStep.PreparedSkips[vehicleID] = default;
+                        return true;
+                    }
+                }
+                
                 vehicleData.m_targetBuilding = preparedSkip.FollowingStop;
                 BusStopSkippingLookupTable.Notify_BusShouldSkipLoading(vehicleID);
                 var unloadParams = new object[] { vehicleID, vehicleData, preparedSkip.SkippedStop, preparedSkip.FollowingStop };
@@ -134,11 +149,12 @@ namespace ExpressBusServices.Patches.Common
             return false;*/
         }
 
-        public static bool ExtraSkippingIsDisallowed(VehicleAI __instance, ushort vehicleID, ref Vehicle vehicleData, out ushort currentApproachingStop)
+        public static bool ExtraSkippingIsDisallowed(VehicleAI __instance, ushort vehicleID, ref Vehicle vehicleData, out ushort currentApproachingStop, out bool skipDecisionIsFinal)
         {
             // note: we extract this to be its own method to narrow down the place that triggers the strange NullRefEx bug
 
             currentApproachingStop = 0;
+            skipDecisionIsFinal = false;
             // per-vehicle detection; we have buses and trams
             /*if (__instance is BusAI || __instance is TrolleybusAI)
             {
@@ -171,55 +187,71 @@ namespace ExpressBusServices.Patches.Common
                 return true;
             }
 
-            TransportLineUtil.CountPassengersWaiting(currentApproachingStop, out int residents, out int tourists);
             var unloadPredict = TransportLineUtil.GetQuantityPassengerUnloadOnNextStop(vehicleID, ref vehicleData, out bool full, out _);
-            if (unloadPredict <= 0 && (full || (residents + tourists) <= 0))
-            {
-                // nobody wants to board or alight, can skip next stop
-                return false;
-            }
 
-            // have someone dropping off OR have boardable passengers
-
-            if (unloadPredict > 0) return true; // if someone wants to alight, the last check is irrelevant
-            if (__instance is TramAI) return true; // trams cannot pass each other, irrelevant
+            if (unloadPredict > 0)
+                return true; // always needs to stop if someone wants to get off
             
+            // nobody wants to alight
+            
+            TransportLineUtil.CountPassengersWaiting(currentApproachingStop, out int residents, out int tourists);
+            int totalWaiting = residents + tourists;
+
+            if (!(__instance is TramAI) && !CheckVehicleAhead(vehicleID, vehicleData, currentApproachingStop, ref skipDecisionIsFinal, totalWaiting))
+                return false;
+            
+            // can only skip if full or nobody is waiting at the stop
+            return !full && totalWaiting > 0;
+        }
+
+        private static bool CheckVehicleAhead(ushort vehicleID, Vehicle vehicleData, ushort currentApproachingStop, ref bool skipDecisionIsFinal, int totalWaiting)
+        {
             // nobody wants to alight, but some want to board
             // check if there's a vehicle on this line in front of this one going to the same stop with enough space to fit all waiting passengers at the next stop
 
             TransportLineVehicleProgress lineProgress = VehicleLineProgress.GetTransportLineVehicleProgress(vehicleData.m_transportLine);
             
-            if (lineProgress.VehiclesCount < 2) return true; // this is the only vehicle on this line, irrelevant
+            if (lineProgress.VehiclesCount < 2) // only this vehicle is on this line, irrelevant
+                return true;
             
             VehicleLineProgress? selfProgress = lineProgress.GetProgressOf(vehicleID);
-            if (!selfProgress.HasValue) return true; // no data?
+            if (!selfProgress.HasValue) return true;
             
             VehicleLineProgress? frontVehicleProgress = lineProgress.GetProgressOfFrontOf(vehicleID);
-            if (!frontVehicleProgress.HasValue) return true; // no data?
+            if (!frontVehicleProgress.HasValue) return true;
             
             if (frontVehicleProgress.Value.PercentProgress < selfProgress.Value.PercentProgress) // not ahead of current vehicle, try back one
             {
                 frontVehicleProgress = lineProgress.GetProgressOfBackOf(vehicleID);
-                if (!frontVehicleProgress.HasValue) return true; // no data?
-                if (frontVehicleProgress.Value.PercentProgress < selfProgress.Value.PercentProgress) return true; // also not ahead, exit
+                if (!frontVehicleProgress.HasValue) return true;
+
+                if (frontVehicleProgress.Value.PercentProgress < selfProgress.Value.PercentProgress)
+                    return true; // also not ahead, check becomes irrelevant
             }
             
             ushort aheadVehicleID = frontVehicleProgress.Value.VehicleID;
-            if (aheadVehicleID == 0) return true; // invalid vehicle
+            if (aheadVehicleID == 0) return true;
             Vehicle aheadVehicle = Singleton<VehicleManager>.instance.m_vehicles.m_buffer[aheadVehicleID];
             
-            // check if this vehicle is also approaching the same stop
-            if (aheadVehicle.m_transportLine == 0 || aheadVehicle.m_path == 0 || aheadVehicle.m_targetBuilding != currentApproachingStop) return true;
+            // check if the vehicle ahead is also approaching the same stop
+            if (aheadVehicle.m_transportLine == 0 || aheadVehicle.m_path == 0 || aheadVehicle.m_targetBuilding != currentApproachingStop)
+                return true;
             
-            if (Patch_VehicleAI_SimulationStep.PreparedSkips[aheadVehicleID].Path != 0) return true; // this vehicle is skipping the next stop, so the current one needs to pick up the waiting passengers
+            // note: if the vehicle ahead has the stop skipping prepared, but there are people waiting,
+            // it will realize that on arrival and stop normally, so this vehicle can skip the stop instead
             
-            // get the current load of this vehicle and how many people will get off of it at the next stop
+            // get the current load of the vehicle ahead and how many people will get off of it at the next stop
             aheadVehicle.Info.m_vehicleAI.GetBufferStatus(aheadVehicleID, ref aheadVehicle, out _, out int passengers, out int capacity);
-            unloadPredict = TransportLineUtil.GetQuantityPassengerUnloadOnNextStop(aheadVehicleID, ref aheadVehicle, out _, out _);
+            var unloadPredict = TransportLineUtil.GetQuantityPassengerUnloadOnNextStop(aheadVehicleID, ref aheadVehicle, out _, out _);
 
-            // if all waiting passengers will be able to board the vehicle ahead, the current one can prepare to skip the stop
-            // otherwise (e.g. not enough capacity), must do a full stop
-            return passengers - unloadPredict + residents + tourists > capacity;
+            // if all waiting passengers will be able to board the vehicle ahead, this one can prepare to skip the stop
+            if (passengers - unloadPredict + totalWaiting <= capacity)
+            {
+                skipDecisionIsFinal = true;
+                return false;
+            }
+
+            return true;
         }
     }
 }

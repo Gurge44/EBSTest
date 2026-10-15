@@ -93,7 +93,7 @@ namespace ExpressBusServices.Patches.Common
 
         public static void CheckSkip(VehicleAI __instance, ushort vehicleID, ref Vehicle vehicleData)
         {
-            if (Patch_PublicTransportExtraSkip.ExtraSkippingIsDisallowed(__instance, vehicleID, ref vehicleData, out ushort currentApproachingStop))
+            if (Patch_PublicTransportExtraSkip.ExtraSkippingIsDisallowed(__instance, vehicleID, ref vehicleData, out ushort currentApproachingStop, out bool skipDecisionIsFinal))
                 return;
 
             if (!Singleton<PathManager>.instance.m_pathUnits.m_buffer[(int)vehicleData.m_path].GetLastPosition(out PathUnit.Position startPos))
@@ -109,7 +109,8 @@ namespace ExpressBusServices.Patches.Common
                     SkippedStop = currentApproachingStop,
                     FollowingStop = nextStop,
                     Path = path,
-                    RetryIn = 0
+                    RetryIn = 0,
+                    SkipDecisionIsFinal = skipDecisionIsFinal
                 };
         }
 
@@ -160,6 +161,7 @@ namespace ExpressBusServices.Patches.Common
             public ushort FollowingStop;
             public uint Path;
             public int RetryIn;
+            public bool SkipDecisionIsFinal;
         }
     }
 }
