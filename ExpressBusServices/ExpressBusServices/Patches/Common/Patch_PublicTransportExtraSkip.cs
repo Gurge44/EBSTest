@@ -50,6 +50,14 @@ namespace ExpressBusServices.Patches.Common
 
             if (preparedSkip.Path != 0)
             {
+                if (vehicleData.m_targetBuilding == 0 || vehicleData.m_transportLine == 0)
+                {
+                    // returning to depot
+                    Singleton<PathManager>.instance.ReleasePath(preparedSkip.Path);
+                    Patch_VehicleAI_SimulationStep.PreparedSkips[vehicleID] = default;
+                    return true;
+                }
+
                 if (!preparedSkip.SkipDecisionIsFinal) // if not passing the vehicle ahead
                 {
                     TransportLineUtil.CountPassengersWaiting(vehicleData.m_targetBuilding, out int residents, out int tourists);
@@ -237,8 +245,11 @@ namespace ExpressBusServices.Patches.Common
             if (aheadVehicle.m_transportLine == 0 || aheadVehicle.m_path == 0 || aheadVehicle.m_targetBuilding != currentApproachingStop)
                 return true;
             
-            // note: if the vehicle ahead has the stop skipping prepared, but there are people waiting,
-            // it will realize that on arrival and stop normally, so this vehicle can skip the stop instead
+            Patch_VehicleAI_SimulationStep.PreparedSkip preparedSkip = Patch_VehicleAI_SimulationStep.PreparedSkips[aheadVehicleID];
+            
+            // if the vehicle ahead is skipping the next stop, and that decision won't change, this vehicle needs to stop to pick up the waiting passengers
+            if (preparedSkip.Path != 0 && preparedSkip.SkipDecisionIsFinal)
+                return true;
             
             // get the current load of the vehicle ahead and how many people will get off of it at the next stop
             aheadVehicle.Info.m_vehicleAI.GetBufferStatus(aheadVehicleID, ref aheadVehicle, out _, out int passengers, out int capacity);
